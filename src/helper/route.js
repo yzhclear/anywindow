@@ -2,10 +2,10 @@ const fs = require('fs')
 const path = require('path')
 const promisify = require('util').promisify
 const Handlebars = require('handlebars')
-const conf = require('../config/defaultConfig')
 const mime = require('./mime')
 const compress = require('./compress')
 const range = require('./range')
+const isFresh = require('./cache')
 
 const stat = promisify(fs.stat)
 const readdir = promisify(fs.readdir)
@@ -14,13 +14,21 @@ const tplPath = path.join(__dirname, '../template/dir.tpl')
 const source = fs.readFileSync(tplPath)
 const template = Handlebars.compile(source.toString())
 
-module.exports = async function (req, res, filePath) {
+module.exports = async function (req, res, filePath, conf) {
   try {
     const stats = await stat(filePath)
     if (stats.isFile()) {
       const contentType = mime(filePath)
       res.statusCode = 200
       res.setHeader('Content-Type', contentType)
+
+      // 如果缓存有效，则返回304
+      if (isFresh(stats, req, res)) {
+        res.statusCode = 304
+        res.end()
+        return
+      }
+
       let rs 
       const { start, end, code } = range(stats.size, req, res)
       if (code === 200) {
