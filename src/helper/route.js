@@ -4,6 +4,8 @@ const promisify = require('util').promisify
 const Handlebars = require('handlebars')
 const conf = require('../config/defaultConfig')
 const mime = require('./mime')
+const compress = require('./compress')
+const range = require('./range')
 
 const stat = promisify(fs.stat)
 const readdir = promisify(fs.readdir)
@@ -19,12 +21,23 @@ module.exports = async function (req, res, filePath) {
       const contentType = mime(filePath)
       res.statusCode = 200
       res.setHeader('Content-Type', contentType)
-      fs.createReadStream(filePath).pipe(res)
+      let rs 
+      const { start, end, code } = range(stats.size, req, res)
+      if (code === 200) {
+        rs = fs.createReadStream(filePath)
+      } else {
+        rs = fs.createReadStream(filePath, { start, end })
+      }
+      if (filePath.match(conf.compress)) {
+        rs = compress(rs, req, res)
+      }
+      rs.pipe(res)
     } else if (stats.isDirectory()) {
       const files = await readdir(filePath)
       res.statusCode = 200
       res.setHeader('Content-Type', 'text/html')
       const dir = path.relative(conf.root, filePath)
+      console.log(conf.root, filePath, dir)
       const data = {
         title: path.basename(filePath),
         dir: dir ? `/${dir}` : '' ,
